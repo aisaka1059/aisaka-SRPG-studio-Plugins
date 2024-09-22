@@ -36,7 +36,6 @@ v1.300
         for (i = 0; i < count; i++) {
             skill = arr[i].skill;
             state = AttackEvaluator.HitCritical._GetState(skill);
-            //root.log(state.getName());
 
             if (StateControl.isStateBlocked(virtualActive.unitSelf, virtualPassive.unitSelf, state)) {
                 // ステートは無効化されるため発動しない
@@ -46,7 +45,6 @@ v1.300
             // Passive側はスキルが発動したからskillArrayPassivesに追加
             if (skill.isSkillDisplayable()) {
                 attackEntry.skillArrayPassive.push(skill);
-                root.log(state.getName());
             }
 
             // Active側はステートを受けるからstateArrayActiveに追加
