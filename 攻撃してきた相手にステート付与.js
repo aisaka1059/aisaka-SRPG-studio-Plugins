@@ -32,7 +32,6 @@ v1.300
         var i, count, skill, state;
         var arr = SkillControl.getDirectSkillArray(virtualPassive.unitSelf, SkillType.CUSTOM, 'StateDeffense');
 
-        // スキルの「ステート防御」を確認する
         count = arr.length;
         for (i = 0; i < count; i++) {
             skill = arr[i].skill;
