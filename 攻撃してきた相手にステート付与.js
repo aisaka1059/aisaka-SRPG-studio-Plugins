@@ -5,7 +5,7 @@
 ・発動率を0％にしていても絶対に発動します。（発動率確認をするとエラーを起こしたため削除しています）
 
 使用方法：
-・カスタムスキルのキーワードに StateDeffense と入れて、カスタムパラメータに {stateid:XX}のように書いてください（xxは付与したいステートのid）
+・カスタムスキルのキーワードに StateDeffense と入れて、カスタムパラメータに {stateid:XX} のように書いてください（xxは付与したいステートのid）
 
 製作者：
 藍坂
@@ -16,6 +16,7 @@ v1.300
 
 更新履歴：
 2024/09/21　作成
+2024/09/27　見切りで無効化できるように改造
 
 規約：
 ・利用はSRPG Studioを使ったゲームに限ります。
@@ -42,6 +43,11 @@ v1.300
                 continue;
             }
 
+            if (!SkillRandomizer.isCustomSkillInvoked(virtualPassive.unitSelf, virtualActive.unitSelf, skill, 'StateDeffense')) {
+                // スキルの発動率が成立しなかった
+                continue;
+            }
+
             // Passive側はスキルが発動したからskillArrayPassivesに追加
             if (skill.isSkillDisplayable()) {
                 attackEntry.skillArrayPassive.push(skill);
@@ -63,9 +69,60 @@ v1.300
         return list.getDataFromId(id);
     };
 
-    alias1 = AttackEvaluator.HitCritical.evaluateAttackEntry;
+    SkillRandomizer._isSkillInvokedInternal = function (active, passive, skill) {
+        if (!skill.getTargetAggregation().isCondition(active)) {
+            return false;
+        }
+
+        // 相手がスキルを無効化できる場合は、スキルを発動しない
+        if (SkillControl.getBattleSkillFromFlag(active, passive, SkillType.INVALID, InvalidFlag.SKILL) !== null) {
+            return false;
+        }
+        return Probability.getInvocationProbabilityFromSkill(passive, skill);
+    };
+
+    SkillControl.getBattleSkillFromFlag = function (active, passive, skilltype, flag) {
+        var i, count, skill;
+        var arr = this.getDirectSkillArray(passive, skilltype, '');
+        count = arr.length;
+        for (i = 0; i < count; i++) {
+            if (arr[i].skill.getSkillType() === skilltype && arr[i].skill.getSkillValue() & flag) {
+                skill = this._getBattleSkillInternal(active, passive, arr[i].skill);
+                if (skill !== null) {
+                    return skill;
+                }
+            }
+        }
+        return null;
+    };
+
+    SkillControl._getBattleSkillInternal = function (active, passive, skill) {
+        if (skill === null) {
+            return null;
+        }
+
+        // 「有効相手」として許可されない
+        if (active !== null && !skill.getTargetAggregation().isCondition(active)) {
+            return null;
+        }
+        return skill;
+    };
+
+    var alias1 = SkillRandomizer.isCustomSkillInvokedInternal;
+    SkillRandomizer.isCustomSkillInvokedInternal = function (active, passive, skill, keyword) {
+        if (keyword === 'StateDeffense') {
+            // 発動率を満たしているかを調べる
+            return this._isSkillInvokedInternal(active, passive, skill);
+        }
+
+        // サポートできるスキルでない場合は、既定のメソッドを呼び出す。
+        // これを忘れると、他の開発者のスキルが考慮される機会がなくなる。
+        return alias1.call(this, active, passive, skill, keyword);
+    };
+
+    alias2 = AttackEvaluator.HitCritical.evaluateAttackEntry;
     AttackEvaluator.HitCritical.evaluateAttackEntry = function (virtualActive, virtualPassive, attackEntry) {
-        var result = alias1.call(this, virtualActive, virtualPassive, attackEntry);
+        var result = alias2.call(this, virtualActive, virtualPassive, attackEntry);
         AttackEvaluator.HitCritical._checkStateDeffense(virtualActive, virtualPassive, attackEntry);
         return result;
     };
