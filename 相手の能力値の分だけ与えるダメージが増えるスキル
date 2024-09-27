@@ -1,0 +1,107 @@
+/*--------------------------------------------------------------------------
+
+概要：
+・このスキルを所持している場合、相手の能力値を攻撃力に加算します。
+
+使用方法：
+・カスタムスキルのキーワードに attack_bonus と入れて、カスタムパラメータに {_str:true,_mag:true,_ski:true,_spd:true,_def:true,_mdf:true,_mov:true} のように書いてください
+・加算したいパラメータはtrue、そうでないものはfalseにしてください。特に記述していない場合はfalseになります
+・HPを加えると公式でサポートされている即死攻撃と同義になるのであえて書いてません。追加したい場合は同じことをすると簡単に追加できると思います
+
+製作者：
+藍坂
+https://x.com/zwuQkSNgQ9B2zvy
+
+動作確認バージョン：
+v1.300
+
+更新履歴：
+2024/09/27　作成
+
+規約：
+・利用はSRPG Studioを使ったゲームに限ります。
+・商用・非商用問いません。フリーです。
+・クレジット明記無し　OK (明記する場合は"藍坂"でお願いします)
+・加工、再配布、転載　OK
+・wiki掲載　OK
+・SRPG Studio利用規約は遵守してください。
+--------------------------------------------------------------------------*/
+
+(function () {
+
+    var alias1 = SkillRandomizer.isCustomSkillInvokedInternal;
+    SkillRandomizer.isCustomSkillInvokedInternal = function (active, passive, skill, keyword) {
+        if (keyword === 'attack_bonus') {
+
+            return this._isSkillInvokedInternal(active, passive, skill);
+        }
+        return alias1.call(this, active, passive, skill, keyword);
+    };
+
+    var alias2 = AttackEvaluator.HitCritical.calculateDamage;
+    AttackEvaluator.HitCritical.calculateDamage = function (virtualActive, virtualPassive, entry) {
+        var damage = alias2.call(this, virtualActive, virtualPassive, entry);
+        var keyword = 'attack_bonus';
+        
+        if (SkillControl.checkAndPushCustomSkill(virtualActive.unitSelf, virtualPassive.unitSelf, entry, true, 'attack_bonus') !== null) {
+
+            var skillArray = SkillControl.getDirectSkillArray(virtualActive.unitSelf, SkillType.CUSTOM, keyword);
+
+            var i, skill, count;
+
+            if (skillArray) {
+                count = skillArray.length;
+                for (i = 0; i < count; i++) {
+
+                    skill = skillArray[i].skill;
+
+                    var unit = virtualPassive.unitSelf;
+
+                    if (skill.custom._str) {
+                        damage += RealBonus.getStr(unit);
+                        root.log('Str' + RealBonus.getStr(unit));
+                    };
+
+                    if (skill.custom._mag) {
+                        damage += RealBonus.getMag(unit);
+                        root.log('Mag' + RealBonus.getMag(unit));
+                    };
+
+                    if (skill.custom._ski) {
+                        damage += RealBonus.getSki(unit);
+                        root.log('Ski' + RealBonus.getSki(unit));
+                    };
+
+                    if (skill.custom._spd) {
+                        damage += RealBonus.getSpd(unit);
+                        root.log('Spd' + RealBonus.getSpd(unit));
+                    };
+
+                    if (skill.custom._luk) {
+                        damage += RealBonus.getLuk(unit);
+                        root.log('Luk' + RealBonus.getLuk(unit));
+                    };
+
+                    if (skill.custom._def) {
+                        damage += RealBonus.getDef(unit);
+                        root.log('Def' + RealBonus.getDef(unit));
+                    };
+
+                    if (skill.custom._mdf) {
+                        damage += RealBonus.getMdf(unit);
+                        root.log('Mdf' + RealBonus.getMdf(unit));
+                    };
+
+                    if (skill.custom._mov) {
+                        damage += RealBonus.getMov(unit);
+                        root.log('Mov' + RealBonus.getMov(unit));
+                    };
+                    break;
+                };
+
+            };
+        };
+        return damage;
+    };
+
+})();
