@@ -120,7 +120,7 @@ v1.300
         return alias1.call(this, active, passive, skill, keyword);
     };
 
-    alias2 = AttackEvaluator.HitCritical.evaluateAttackEntry;
+    var alias2 = AttackEvaluator.HitCritical.evaluateAttackEntry;
     AttackEvaluator.HitCritical.evaluateAttackEntry = function (virtualActive, virtualPassive, attackEntry) {
         var result = alias2.call(this, virtualActive, virtualPassive, attackEntry);
         AttackEvaluator.HitCritical._checkStateDeffense(virtualActive, virtualPassive, attackEntry);
