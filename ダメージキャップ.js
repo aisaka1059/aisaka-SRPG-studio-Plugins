@@ -109,10 +109,10 @@ v1.303
 
                     for (j = 0; j < count; j++) {
                         skill = arr[j].skill;
-                    }
 
-                    if (skill.custom.Auto === true || skill.custom.Auto == null) {
-                        unit.custom.damagcap = [];
+                        if (skill.custom.Auto === true || skill.custom.Auto == null) {
+                            unit.custom.damagcap = [];
+                        }
                     }
                 }
             }
