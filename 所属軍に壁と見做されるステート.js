@@ -40,7 +40,6 @@ v1.310
 					var i;
 					for (i = 0; i < count; i++) {
 						state = list.getData(i).getstate()
-						root.log(state.getName())
 						if (state.custom.hudou) {
 							return true;
 						}
