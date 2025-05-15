@@ -42,7 +42,6 @@ v1.312
 
             if (targetUnit !== null && unit !== targetUnit) {
                 if (FilterControl.isReverseUnitTypeAllowed(unit, targetUnit)) {
-                    root.log(targetUnit.getName());
 
                     var list = targetUnit.getTurnStateList();
                     var count2 = list.getCount();
