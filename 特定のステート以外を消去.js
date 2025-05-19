@@ -15,7 +15,7 @@ Fnc_StateEraseExcept.stateEraseExceptControl([1, 2, 3], false, false, true, fals
 https://x.com/zwuQkSNgQ9B2zvy
 
 動作確認バージョン：
-v1.302
+v1.312
 
 更新履歴：
 2025/05/19　作成
