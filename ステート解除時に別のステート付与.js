@@ -8,8 +8,6 @@
 ・以上の例だと何らかのステートが解除されたときにidが1,2,3のステートが付与されます
 ・付与したいステートが1つの場合でも {assignment: [1] } のように[]は外さないでください
 
-・戦闘時に解除されるステートは処理が違うらしく、そちらの対応はできていません。後日対応する予定です
-
 製作者：
 藍坂
 https://x.com/zwuQkSNgQ9B2zvy
@@ -19,6 +17,7 @@ v1.313
 
 更新履歴：
 2025/07/13　作成
+2025/07/14　戦闘時の自動解除でも適用されるように修正
 
 規約：
 ・利用はSRPG Studioを使ったゲームに限ります。
@@ -80,5 +79,74 @@ v1.313
 
         MapHpControl.updateHp(unit);
         return turnState;
+    };
+
+    StateAutoRemovalFlowEntry._checkState = function (unit, order) {
+        var i, turnState, state, type;
+        var list = unit.getTurnStateList();
+        var count = list.getCount();
+        var arr = [];
+
+        for (i = 0; i < count; i++) {
+            turnState = list.getData(i);
+            if (turnState.isLocked()) {
+                turnState.setLocked(false);
+                continue;
+            }
+
+            state = turnState.getState();
+            type = state.getAutoRemovalType();
+            if (type === StateAutoRemovalType.NONE) {
+                continue;
+            }
+            else if (type === StateAutoRemovalType.BATTLEEND) {
+                arr.push(turnState);
+            }
+            else if (type === StateAutoRemovalType.ACTIVEDAMAGE || type === StateAutoRemovalType.PASSIVEDAMAGE) {
+                if (this._checkHit(unit, order, type)) {
+                    arr.push(turnState);
+                }
+            }
+        }
+
+        count = arr.length;
+        for (i = 0; i < count; i++) {
+            turnState = arr[i];
+            this._removeState(list, turnState, unit);
+        }
+    };
+
+    StateAutoRemovalFlowEntry._removeState = function (list, turnState, unit) {
+        var count = turnState.getRemovalCount() - 1;
+
+        if (count > 0) {
+            turnState.setRemovalCount(count);
+            return;
+        }
+
+        root.getDataEditor().deleteTurnStateData(list, turnState.getState());
+        var state = turnState.getState()
+        // ステート解除時に別のステートを付与
+        if (state.custom.assignment) {
+            var stateList = root.getBaseData().getStateList();
+            var ids;
+            var i;
+
+            if (state.custom.assignment) {
+                ids = state.custom.assignment;
+            }
+            else {
+                ids = [state.custom.assignment];
+            }
+
+            for (i = 0; i < ids.length; i++) {
+                var id = ids[i];
+                var newState = stateList.getDataFromId(id);
+
+                if (newState) {
+                    StateControl.arrangeState(unit, newState, IncreaseType.INCREASE);
+                }
+            }
+        }
     };
 })();
