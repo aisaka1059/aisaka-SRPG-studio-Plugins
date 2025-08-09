@@ -1,0 +1,61 @@
+/*--------------------------------------------------------------------------
+概要：
+・ユニット1人に付与されているステートボーナスを全て集計して任意の変数に保存します
+
+使用方法：
+スクリプトの実行→コード実行に
+
+製作者：
+藍坂
+https://x.com/zwuQkSNgQ9B2zvy
+
+動作確認バージョン：
+v1.316
+
+更新履歴：
+2024/11/04　作成
+
+規約：
+・利用はSRPG Studioを使ったゲームに限ります。
+・商用・非商用問いません。フリーです。
+・クレジット明記無し　OK (明記する場合は"藍坂"でお願いします)
+・加工、再配布、転載　OK
+・wiki掲載　OK
+・SRPG Studio利用規約は遵守してください。
+--------------------------------------------------------------------------*/
+(function() {
+    // ==== 設定部分 ====
+    // 計算したい能力IDの配列（例: 力=1, 速さ=4）
+    var targetParamIds = [0,1,2,3,4,5,6,7,8,9,10];
+
+    // "plus"=正の合計, "minus"=負の合計
+    var mode = "minus";
+    // ==================
+
+    var unit = root.getEventCommandObject().getOriginalContent().getUnit();
+    var list = unit.getTurnStateList();
+    var count = list.getCount();
+    var i, j, turnState, assistValue;
+    var sum = 0;
+
+    for (i = 0; i < count; i++) {
+        turnState = list.getData(i);
+
+        // 複数の能力IDを順にチェック
+        for (j = 0; j < targetParamIds.length; j++) {
+            assistValue = turnState.getDopingParameter().getAssistValue(targetParamIds[j]);
+
+            if (mode === "plus" && assistValue > 0) {
+                sum += assistValue;
+            } else if (mode === "minus" && assistValue < 0) {
+                sum += assistValue;
+            }
+        }
+    }
+
+    // 出力
+    root.log("能力ID " + targetParamIds.join(",") + " の " + mode + " 合計値: " + sum);
+
+    // 変数保存例（テーブル1の変数1に保存）
+    root.getMetaSession().getVariableTable(0).setVariable(1, sum);
+})();
