@@ -57,5 +57,5 @@ v1.316
     root.log("能力ID " + targetParamIds.join(",") + " の " + mode + " 合計値: " + sum);
 
     // 変数保存例（テーブル1の変数1に保存）
-    root.getMetaSession().getVariableTable(0).setVariable(1, sum);
+    root.getMetaSession().getVariableTable(0).setVariable(0, sum);
 })();
