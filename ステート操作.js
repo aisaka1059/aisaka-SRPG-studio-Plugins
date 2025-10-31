@@ -13,9 +13,10 @@
 ・ステートのターン増減
 ・ステートの現在ターンをn倍にする
 ・ステート解除時に別のステート付与
-・バッドステート予防ステート（新規効果）
+・バッドステート予防ステート（新規機能）
+・既に付与されているステートと同じステートが付与される場合残りターン数を加算できる機能（新規機能）
 
-の4つを扱うことができます
+の5つを扱うことができます
 
 使用方法：
 ▼ターン増減
@@ -45,13 +46,30 @@
 ▼バッドステート予防
  ステートのカスタムパラメータに
 
- { preventBadState: true, preventTurn: 3 }
+ { preventBadState: true }
 
- のように書いてください。防げる回数はpreventTurn: 3の部分をいじれば変えられます
- 作者の想定では、予防ステートの残りターンがバッドステートを防げる回数を表しています
- SRPGSTUDIO本体で予防ステートの持続ターンを何ターンに設定していようとこちらが優先されます
+ のように書いてください。防げる回数は残りターン数に依存します
  ターン開始時に残りターンは減少してしまいますが、上のステートのターン増減機能でターン開始時に+1してあげれば実質的にターンは減ってないものとみなせます
  ステートでプレイヤーが確認できる数字がそれしかなかったので苦肉の策です
+
+▼残りターン数加算
+ ステートのカスタムパラメータに
+
+ {addstate: true}
+
+ と書いてください。そのステートだけターンが加算されるようになります
+
+
+
+そして以上の機能は複合して使用することが可能です。例えば「バッドステートを防いで、重ね掛けしたらターン数が伸びて、解除されたらid1,2,3のステートを付与する」ステートを作りたい！としたなら
+
+{
+  preventBadState: true,   // バッドステートを防ぐ
+  addstate: true,           // 再付与時に残りターンを加算
+  assignment: [1, 2, 3]
+}
+
+と書けばいいです
 
 製作者：
 藍坂
@@ -72,252 +90,270 @@ v1.313
 ・SRPG Studio利用規約は遵守してください。
 --------------------------------------------------------------------------*/
 
+//-------------------------------------------------------
+// ステートターン増減・倍率変更機能
+//-------------------------------------------------------
+var Fnc_ChangeStateTurn = {
+
+    //---------------------------------------------------
+    // 残りターン増減
+    //---------------------------------------------------
+    _StateTurnControl: function (Id, turn, one, player, enemy, ally) {
+        if (one === true) {
+            var content = root.getEventCommandObject().getOriginalContent();
+            var unit = content.getUnit();
+            var list = unit.getTurnStateList();
+            var count = list.getCount();
+            this._modifyTurnState(Id, turn, unit, list, count);
+        }
+
+        if (player === true) {
+            var playerList = PlayerList.getAliveList();
+            this._getStateList(Id, turn, playerList, playerList.getCount());
+        }
+        if (enemy === true) {
+            var enemyList = EnemyList.getAliveList();
+            this._getStateList(Id, turn, enemyList, enemyList.getCount());
+        }
+        if (ally === true) {
+            var allyList = AllyList.getAliveList();
+            this._getStateList(Id, turn, allyList, allyList.getCount());
+        }
+    },
+
+    _getStateList: function (Id, turn, unitList, unitCount) {
+        for (var i = 0; i < unitCount; i++) {
+            var unit = unitList.getData(i);
+            var stateList = unit.getTurnStateList();
+            var stateCount = stateList.getCount();
+            this._modifyTurnState(Id, turn, unit, stateList, stateCount);
+        }
+    },
+
+    _modifyTurnState: function (Id, turn, unit, list, count) {
+        for (var i = 0; i < count; i++) {
+            var turnState = list.getData(i);
+            var state = turnState.getState();
+            var remain = turnState.getTurn();
+
+            if (state.getId() === Id) {
+                remain += turn;
+                if (remain <= 0) {
+                    StateControl.arrangeState(unit, state, IncreaseType.DECREASE);
+                } else {
+                    turnState.setTurn(remain);
+                }
+                break;
+            }
+        }
+    },
+
+    //---------------------------------------------------
+    // 残りターン倍率変更（新機能）
+    //---------------------------------------------------
+    _MultiplyStateTurn: function (Id, rate, one, player, enemy, ally) {
+        if (rate <= 0) return;
+
+        if (one === true) {
+            var content = root.getEventCommandObject().getOriginalContent();
+            var unit = content.getUnit();
+            var list = unit.getTurnStateList();
+            this._applyMultiply(Id, rate, unit, list);
+        }
+
+        if (player === true) {
+            var playerList = PlayerList.getAliveList();
+            for (var i = 0; i < playerList.getCount(); i++) {
+                var unit = playerList.getData(i);
+                var list = unit.getTurnStateList();
+                this._applyMultiply(Id, rate, unit, list);
+            }
+        }
+
+        if (enemy === true) {
+            var enemyList = EnemyList.getAliveList();
+            for (var j = 0; j < enemyList.getCount(); j++) {
+                var unit = enemyList.getData(j);
+                var list = unit.getTurnStateList();
+                this._applyMultiply(Id, rate, unit, list);
+            }
+        }
+
+        if (ally === true) {
+            var allyList = AllyList.getAliveList();
+            for (var k = 0; k < allyList.getCount(); k++) {
+                var unit = allyList.getData(k);
+                var list = unit.getTurnStateList();
+                this._applyMultiply(Id, rate, unit, list);
+            }
+        }
+    },
+
+    _applyMultiply: function (Id, rate, unit, list) {
+        var count = list.getCount();
+        for (var i = 0; i < count; i++) {
+            var turnState = list.getData(i);
+            var state = turnState.getState();
+            if (state.getId() === Id) {
+                var current = turnState.getTurn();
+                var updated = Math.floor(current * rate);
+                turnState.setTurn(updated);
+                root.log(unit.getName() + " の「" + state.getName() + "」残りターンを " + current + " → " + updated + " に変更しました。");
+                break;
+            }
+        }
+    }
+};
+
 (function () {
+    //-------------------------------------------------------
+    // ステート付与／解除処理 + バッドステート予防
+    //-------------------------------------------------------
+    var _arrangeState = StateControl.arrangeState;
+    StateControl.arrangeState = function (unit, state, increaseType) {
+        var turnState = null;
+        var list = unit.getTurnStateList();
+        var count = list.getCount();
+        var editor = root.getDataEditor();
 
-	//-------------------------------------------------------
-	// ステートターン増減関数
-	//-------------------------------------------------------
-	var Fnc_ChangeStateTurn = {
-		_StateTurnControl: function (Id, turn, one, player, enemy, ally) {
-			if (one === true) {
-				var content = root.getEventCommandObject().getOriginalContent();
-				var unit = content.getUnit();
-				var list = unit.getTurnStateList();
-				var count = list.getCount();
-				this._modifyTurnState(Id, turn, unit, list, count);
-			}
+        //------------------------------
+        // バッドステート予防チェック（修正版）
+        //------------------------------
+        if (increaseType === IncreaseType.INCREASE && state.isBadState()) {
+            for (var i = 0; i < count; i++) {
+                var ts = list.getData(i);
+                var s = ts.getState();
 
-			if (player === true) {
-				var playerList = PlayerList.getAliveList();
-				this._getStateList(Id, turn, playerList, playerList.getCount());
-			}
-			if (enemy === true) {
-				var enemyList = EnemyList.getAliveList();
-				this._getStateList(Id, turn, enemyList, enemyList.getCount());
-			}
-			if (ally === true) {
-				var allyList = AllyList.getAliveList();
-				this._getStateList(Id, turn, allyList, allyList.getCount());
-			}
-		},
+                if (s.custom && s.custom.preventBadState === true) {
+                    // 変更点：
+                    // ここでは「既に同じステートがあるか」を見ずに、予防ステートが存在すれば
+                    // 常にバッドステートを無効化（＝付与を止める）します。
+                    // 既存のバッドステートがあっても、再付与による上書きを防ぎます。
 
-		_getStateList: function (Id, turn, unitList, unitCount) {
-			var i;
-			for (i = 0; i < unitCount; i++) {
-				var unit = unitList.getData(i);
-				var stateList = unit.getTurnStateList();
-				var stateCount = stateList.getCount();
-				this._modifyTurnState(Id, turn, unit, stateList, stateCount);
-			}
-		},
+                    root.log("バッドステート「" + state.getName() + "」は予防ステート「" + s.getName() + "」により無効化されました");
 
-		_modifyTurnState: function (Id, turn, unit, list, count) {
-			var i;
-			for (i = 0; i < count; i++) {
-				var turnstate = list.getData(i);
-				var state = turnstate.getState();
-				var changeturn = turnstate.getTurn();
+                    // 予防ステートのターンを1減少（残り1なら解除）
+                    var remain = ts.getTurn();
+                    if (remain > 1) {
+                        ts.setTurn(remain - 1);
+                    } else {
+                        // 解除（この呼び出しは再帰的にarrangeStateを呼びますが、
+                        // increaseType === DECREASEなので防止ループにはならない）
+                        StateControl.arrangeState(unit, s, IncreaseType.DECREASE);
+                    }
+                    // 付与処理を中断（既存の同一バッドステートがある場合でも上書きしない）
+                    return null;
+                }
+            }
+        }
 
-				if (state.getId() === Id) {
-					changeturn += turn;
-					if (changeturn <= 0) {
-						StateControl.arrangeState(unit, state, IncreaseType.DECREASE);
-					} else {
-						turnstate.setTurn(changeturn);
-					}
-					break;
-				}
-			}
-		}
-	};
+        //------------------------------
+        // 通常付与／解除処理（既存の処理をそのまま使用）
+        //------------------------------
+        if (increaseType === IncreaseType.INCREASE) {
+            turnState = this.getTurnState(unit, state);
+            if (turnState !== null) {
+                // addstate対応
+                if (state.custom && state.custom.addstate === true) {
+                    // 残りターンを加算
+                    var newTurn = turnState.getTurn() + state.getTurn();
+                    turnState.setTurn(newTurn);
+                    root.log("ステート「" + state.getName() + "」の残りターンを加算しました: " + newTurn);
+                } else {
+                    // 通常の上書き
+                    turnState.setTurn(state.getTurn());
+                }
+            } else if (count < DataConfig.getMaxStateCount()) {
+                turnState = editor.addTurnStateData(list, state);
+            }
+        }
+        else if (increaseType === IncreaseType.DECREASE) {
+            editor.deleteTurnStateData(list, state);
 
+            // 解除時付与処理
+            if (state.custom && state.custom.assignment) {
+                var stateList = root.getBaseData().getStateList();
+                var ids = (state.custom.assignment instanceof Array) ? state.custom.assignment : [state.custom.assignment];
 
-	//-------------------------------------------------------
-	// ステート付与・解除処理 + バッドステート予防
-	//-------------------------------------------------------
-	var _arrangeState = StateControl.arrangeState;
-	StateControl.arrangeState = function (unit, state, increaseType) {
-		var turnState = null;
-		var list = unit.getTurnStateList();
-		var count = list.getCount();
-		var editor = root.getDataEditor();
+                for (var k = 0; k < ids.length; k++) {
+                    var newState = stateList.getDataFromId(ids[k]);
+                    if (newState) {
+                        StateControl.arrangeState(unit, newState, IncreaseType.INCREASE);
+                    }
+                }
+            }
+        }
+        else if (increaseType === IncreaseType.ALLRELEASE) {
+            editor.deleteAllTurnStateData(list);
+        }
 
-		//---------------------------------------------------
-		// バッドステート予防チェック
-		//---------------------------------------------------
-		if (increaseType === IncreaseType.INCREASE && state.isBadState()) {
-			var i, j;
-			for (i = 0; i < count; i++) {
-				var ts = list.getData(i);
-				var s = ts.getState();
-
-				// preventBadStateを持つステートがあるか？
-				if (s.custom.preventBadState === true) {
-					// 既に同じステートがある場合は防がない
-					var alreadyHas = false;
-					for (j = 0; j < count; j++) {
-						var existing = list.getData(j).getState();
-						if (existing.getId() === state.getId()) {
-							alreadyHas = true;
-							break;
-						}
-					}
-
-					// 既存がないときだけ防ぐ
-					if (!alreadyHas) {
-						root.log("バッドステート「" + state.getName() + "」は予防ステートにより無効化されました");
-
-						// 予防ステートのターンを1減少
-						var remain = ts.getTurn();
-						if (remain > 1) {
-							ts.setTurn(remain - 1);
-						} else {
-							StateControl.arrangeState(unit, s, IncreaseType.DECREASE);
-						}
-						return null;
-					}
-				}
-			}
-		}
-
-		//---------------------------------------------------
-		// 通常付与・解除処理
-		//---------------------------------------------------
-		if (increaseType === IncreaseType.INCREASE) {
-			turnState = this.getTurnState(unit, state);
-			if (turnState !== null) {
-				turnState.setTurn(state.getTurn());
-			} else if (count < DataConfig.getMaxStateCount()) {
-				turnState = editor.addTurnStateData(list, state);
-			}
-
-			// preventTurnが指定されている場合は上書き
-			if (state.custom.preventBadState === true && typeof state.custom.preventTurn === 'number') {
-				if (turnState) {
-					turnState.setTurn(state.custom.preventTurn);
-				}
-			}
-		}
-		else if (increaseType === IncreaseType.DECREASE) {
-			editor.deleteTurnStateData(list, state);
-
-			// ステート解除時に別ステート付与
-			if (state.custom.assignment) {
-				var stateList = root.getBaseData().getStateList();
-				var ids, k;
-				if (state.custom.assignment instanceof Array) {
-					ids = state.custom.assignment;
-				} else {
-					ids = [state.custom.assignment];
-				}
-
-				for (k = 0; k < ids.length; k++) {
-					var id = ids[k];
-					var newState = stateList.getDataFromId(id);
-					if (newState) {
-						StateControl.arrangeState(unit, newState, IncreaseType.INCREASE);
-					}
-				}
-			}
-		}
-		else if (increaseType === IncreaseType.ALLRELEASE) {
-			editor.deleteAllTurnStateData(list);
-		}
-
-		MapHpControl.updateHp(unit);
-		return turnState;
-	};
+        MapHpControl.updateHp(unit);
+        return turnState;
+    };
 
 
-	//-------------------------------------------------------
-	// 自動解除時にもassignment付与を適用
-	//-------------------------------------------------------
-	var _removeState = StateAutoRemovalFlowEntry._removeState;
-	StateAutoRemovalFlowEntry._removeState = function (list, turnState, unit) {
-		var count = turnState.getRemovalCount() - 1;
-		if (count > 0) {
-			turnState.setRemovalCount(count);
-			return;
-		}
+    //-------------------------------------------------------
+    // 自動解除時にも assignment を適用
+    //-------------------------------------------------------
 
-		root.getDataEditor().deleteTurnStateData(list, turnState.getState());
-		var state = turnState.getState();
+    var _checkState = StateAutoRemovalFlowEntry._checkState;
+    StateAutoRemovalFlowEntry._checkState = function (unit, order) {
+        var i, turnState, state, type;
+        var list = unit.getTurnStateList();
+        var count = list.getCount();
+        var arr = [];
 
-		if (state.custom.assignment) {
-			var stateList = root.getBaseData().getStateList();
-			var ids, i;
-			if (state.custom.assignment instanceof Array) {
-				ids = state.custom.assignment;
-			} else {
-				ids = [state.custom.assignment];
-			}
+        for (i = 0; i < count; i++) {
+            turnState = list.getData(i);
+            if (turnState.isLocked()) {
+                turnState.setLocked(false);
+                continue;
+            }
 
-			for (i = 0; i < ids.length; i++) {
-				var id = ids[i];
-				var newState = stateList.getDataFromId(id);
-				if (newState) {
-					StateControl.arrangeState(unit, newState, IncreaseType.INCREASE);
-				}
-			}
-		}
-	};
+            state = turnState.getState();
+            type = state.getAutoRemovalType();
+            if (type === StateAutoRemovalType.NONE) {
+                continue;
+            }
+            else if (type === StateAutoRemovalType.BATTLEEND) {
+                arr.push(turnState);
+            }
+            else if (type === StateAutoRemovalType.ACTIVEDAMAGE || type === StateAutoRemovalType.PASSIVEDAMAGE) {
+                if (this._checkHit(unit, order, type)) {
+                    arr.push(turnState);
+                }
+            }
+        }
 
-	// -------------------------------------------------------
-	// ステート残りターン倍率変更関数
-	// -------------------------------------------------------
-	Fnc_ChangeStateTurn._MultiplyStateTurn = function (Id, rate, one, player, enemy, ally) {
-		if (rate <= 0) return; // 無効な倍率は無視
+        count = arr.length;
+        for (i = 0; i < count; i++) {
+            turnState = arr[i];
+            this._removeState(list, turnState, unit);
+        }
+    };
 
-		if (one === true) {
-			var content = root.getEventCommandObject().getOriginalContent();
-			var unit = content.getUnit();
-			var list = unit.getTurnStateList();
-			this._applyMultiply(Id, rate, unit, list);
-		}
+    var _removeState = StateAutoRemovalFlowEntry._removeState;
+    StateAutoRemovalFlowEntry._removeState = function (list, turnState, unit) {
+        var count = turnState.getRemovalCount() - 1;
+        if (count > 0) {
+            turnState.setRemovalCount(count);
+            return;
+        }
 
-		if (player === true) {
-			var playerList = PlayerList.getAliveList();
-			for (var i = 0; i < playerList.getCount(); i++) {
-				var unit = playerList.getData(i);
-				var list = unit.getTurnStateList();
-				this._applyMultiply(Id, rate, unit, list);
-			}
-		}
+        root.getDataEditor().deleteTurnStateData(list, turnState.getState());
+        var state = turnState.getState();
 
-		if (enemy === true) {
-			var enemyList = EnemyList.getAliveList();
-			for (var j = 0; j < enemyList.getCount(); j++) {
-				var unit = enemyList.getData(j);
-				var list = unit.getTurnStateList();
-				this._applyMultiply(Id, rate, unit, list);
-			}
-		}
+        if (state.custom.assignment) {
+            var stateList = root.getBaseData().getStateList();
+            var ids = (state.custom.assignment instanceof Array) ? state.custom.assignment : [state.custom.assignment];
 
-		if (ally === true) {
-			var allyList = AllyList.getAliveList();
-			for (var k = 0; k < allyList.getCount(); k++) {
-				var unit = allyList.getData(k);
-				var list = unit.getTurnStateList();
-				this._applyMultiply(Id, rate, unit, list);
-			}
-		}
-	};
-
-	// 残りターン倍率適用の内部処理
-	Fnc_ChangeStateTurn._applyMultiply = function (Id, rate, unit, list) {
-		var count = list.getCount();
-		for (var i = 0; i < count; i++) {
-			var turnstate = list.getData(i);
-			var state = turnstate.getState();
-			if (state.getId() === Id) {
-				var currentTurn = turnstate.getTurn();
-				var newTurn = Math.floor(currentTurn * rate);
-				turnstate.setTurn(newTurn);
-				root.log(unit.getName() + " の「" + state.getName() + "」残りターンを " + currentTurn + "→" + newTurn + " に変更しました。");
-				break;
-			}
-		}
-	};
-
+            for (var i = 0; i < ids.length; i++) {
+                var newState = stateList.getDataFromId(ids[i]);
+                if (newState) {
+                    StateControl.arrangeState(unit, newState, IncreaseType.INCREASE);
+                }
+            }
+        }
+    };
 
 })();
