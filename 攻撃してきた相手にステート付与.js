@@ -95,18 +95,6 @@ v1.300
         return null;
     };
 
-    SkillControl._getBattleSkillInternal = function (active, passive, skill) {
-        if (skill === null) {
-            return null;
-        }
-
-        // 「有効相手」として許可されない
-        if (active !== null && !skill.getTargetAggregation().isCondition(active)) {
-            return null;
-        }
-        return skill;
-    };
-
     var alias1 = SkillRandomizer.isCustomSkillInvokedInternal;
     SkillRandomizer.isCustomSkillInvokedInternal = function (active, passive, skill, keyword) {
         if (keyword === 'StateDeffense') {
