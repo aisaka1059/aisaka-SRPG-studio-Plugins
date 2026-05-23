@@ -7,6 +7,14 @@
 ・カスタムスキルのキーワードに
   alwaysCritical
   と入力してください。
+  また、カスタムパラメータに
+
+{
+	ignoreCriticalInvalid: false
+}
+
+と書けば、クリティカル無効スキルを所持しているユニットはこのスキルの効果でもクリティカルを受けなくなります。デフォルトだとクリティカルが発動します
+
 
 製作者：
 藍坂
@@ -28,50 +36,73 @@ v1.321
 --------------------------------------------------------------------------*/
 (function () {
 
-	// カスタムスキルの発動判定を追加
 	var alias1 = SkillRandomizer.isCustomSkillInvokedInternal;
+
 	SkillRandomizer.isCustomSkillInvokedInternal = function (active, passive, skill, keyword) {
 
 		if (keyword === 'alwaysCritical') {
-			// スキル発動率判定
 			return this._isSkillInvokedInternal(active, passive, skill);
 		}
 
 		return alias1.call(this, active, passive, skill, keyword);
 	};
 
-	// クリティカル判定を書き換え
 	var alias2 = AttackEvaluator.HitCritical.isCritical;
+
 	AttackEvaluator.HitCritical.isCritical = function (virtualActive, virtualPassive, attackEntry) {
 
 		var active = virtualActive.unitSelf;
 		var passive = virtualPassive.unitSelf;
 
-		// 攻撃側スキル判定
-		var skill1 = SkillControl.checkAndPushCustomSkill(
-			active,
-			passive,
-			attackEntry,
-			true,
-			'alwaysCritical'
-		);
+		var activeSkill = SkillControl.getPossessionCustomSkill(active, 'alwaysCritical');
+		var passiveSkill = SkillControl.getPossessionCustomSkill(passive, 'alwaysCritical');
 
-		// 防御側スキル判定
-		var skill2 = SkillControl.checkAndPushCustomSkill(
-			passive,
-			active,
-			attackEntry,
-			false,
-			'alwaysCritical'
-		);
+		// 誰も所持していない
+		if (activeSkill === null && passiveSkill === null) {
+			return alias2.call(this, virtualActive, virtualPassive, attackEntry);
+		}
 
-		// どちらかが発動したら必ずクリティカル
-		if (skill1 !== null || skill2 !== null) {
+		// スキル表示
+		if (activeSkill !== null) {
+			SkillControl.checkAndPushCustomSkill(active, passive, attackEntry, true, 'alwaysCritical');
+		}
+
+		if (passiveSkill !== null) {
+			SkillControl.checkAndPushCustomSkill(passive, active, attackEntry, false, 'alwaysCritical');
+		}
+
+		// passive側のクリティカル無効確認
+		var invalidSkill = SkillControl.getBattleSkillFromFlag(passive, active, SkillType.INVALID, InvalidFlag.CRITICAL);
+
+		// 無効スキル無し
+		if (invalidSkill === null) {
 			return true;
 		}
 
-		// 元の処理
-		return alias2.call(this, virtualActive, virtualPassive, attackEntry);
+		// デフォルトは true
+		var ignoreInvalid = true;
+
+		// active優先
+		if (activeSkill !== null) {
+
+			if (activeSkill.custom.ignoreCriticalInvalid === false) {
+				ignoreInvalid = false;
+			}
+			else if (activeSkill.custom.ignoreCriticalInvalid === true) {
+				ignoreInvalid = true;
+			}
+		}
+		else if (passiveSkill !== null) {
+
+			if (passiveSkill.custom.ignoreCriticalInvalid === false) {
+				ignoreInvalid = false;
+			}
+			else if (passiveSkill.custom.ignoreCriticalInvalid === true) {
+				ignoreInvalid = true;
+			}
+		}
+
+		return ignoreInvalid;
 	};
 
 })();
