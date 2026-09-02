@@ -2,6 +2,7 @@
 
 注意：
 このプラグインは名前未定（仮）さん制作の「範囲を持つステート」を改造したものになります
+両方入れていると競合を起こすので入れる場合はどちらかにしてください
 このプラグインを使用したことで問題が発生した場合には改造した私藍坂に連絡をください
 
 概要：
@@ -44,6 +45,7 @@ v1.324
 
 (function() {
 
+
 	/*=======================================================================
 	 *
 	 * StateControl
@@ -55,9 +57,12 @@ v1.324
 		var aliasStateArrange =
 			StateControl.arrangeState;
 
+
 		StateControl._rangeStateCopying = false;
 		StateControl._rangeStateBattle = false;
 		StateControl._rangeStateClearing = false;
+		StateControl._rangeStatePropagation = false;
+
 
 		StateControl.arrangeState = function(
 			unit,
@@ -74,8 +79,15 @@ v1.324
 				);
 
 
+			/*
+			 * 通常のステート付与。
+			 *
+			 * 杖・道具の範囲指定は一切使用しない。
+			 * state.custom.stateRange のみを見る。
+			 */
 			if (
 				!this._rangeStateCopying &&
+				!this._rangeStatePropagation &&
 				increaseType === IncreaseType.INCREASE &&
 				result !== null &&
 				unit !== null &&
@@ -95,17 +107,12 @@ v1.324
 					RangeStateControl.clearRangeStateAll();
 					RangeStateControl.upDateAndCopy();
 				}
-
-
-				RangeStateControl.clearRangeFlag(unit);
 			}
 
 
 			/*
 			 * 中心ユニット自身のステートが解除された場合、
 			 * その中心から拡散されたステートも解除する。
-			 *
-			 * 範囲ステートの通常の解除処理中は除外する。
 			 */
 			if (
 				!this._rangeStateCopying &&
@@ -209,43 +216,6 @@ v1.324
 
 	/*=======================================================================
 	 *
-	 * StateItemUse
-	 *
-	 *=======================================================================*/
-
-	if (typeof StateItemUse !== 'undefined') {
-
-		var aliasStateItemUse =
-			StateItemUse.enterMainUseCycle;
-
-		StateItemUse.enterMainUseCycle =
-			function(itemUseParent) {
-
-				var itemTargetInfo =
-					itemUseParent.getItemTargetInfo();
-
-				if (
-					itemTargetInfo !== null
-				) {
-
-					RangeStateControl.setRangeFlagToUnit(
-						itemTargetInfo.targetUnit,
-						itemTargetInfo.item,
-						itemTargetInfo.unit
-					);
-				}
-
-
-				return aliasStateItemUse.call(
-					this,
-					itemUseParent
-				);
-			};
-	}
-
-
-	/*=======================================================================
-	 *
 	 * UnitStateAdditionEventCommand
 	 *
 	 *=======================================================================*/
@@ -262,15 +232,7 @@ v1.324
 
 				aliasStateEvent.call(this);
 
-				if (
-					typeof this._targetUnit !== 'undefined' &&
-					this._targetUnit !== null
-				) {
-
-					RangeStateControl.clearRangeFlag(
-						this._targetUnit
-					);
-				}
+				RangeStateControl.upDateAndCopy();
 			};
 	}
 
@@ -473,14 +435,8 @@ v1.324
 
 				aliasUnitDeath.call(this);
 
-				if (
-					this._activeUnit !== null &&
-					this._passiveUnit !== null
-				) {
-
-					RangeStateControl.clearRangeStateAll();
-					RangeStateControl.upDateAndCopy();
-				}
+				RangeStateControl.clearRangeStateAll();
+				RangeStateControl.upDateAndCopy();
 			};
 	}
 
@@ -535,6 +491,8 @@ v1.324
 				RangeStateControl.upDateAndCopy();
 
 				aliasCatch.call(this);
+
+				RangeStateControl.upDateAndCopy();
 			};
 	}
 
@@ -667,6 +625,52 @@ v1.324
 			};
 	}
 
+
+	/*=======================================================================
+	 *
+	 * ScriptCall_Load
+	 *
+	 * セーブデータ読み込み後に範囲情報を再構築
+	 *
+	 *=======================================================================*/
+
+	if (typeof ScriptCall_Load !== 'undefined') {
+
+		var aliasScriptLoad =
+			ScriptCall_Load.mainEventCommand;
+
+		ScriptCall_Load.mainEventCommand =
+			function() {
+
+				aliasScriptLoad.call(this);
+
+				RangeStateControl.upDateAll();
+			};
+	}
+
+
+	/*=======================================================================
+	 *
+	 * ScriptCall_AppearEventUnit
+	 *
+	 *=======================================================================*/
+
+	if (
+		typeof ScriptCall_AppearEventUnit !== 'undefined'
+	) {
+
+		var aliasAppear =
+			ScriptCall_AppearEventUnit.mainEventCommand;
+
+		ScriptCall_AppearEventUnit.mainEventCommand =
+			function() {
+
+				aliasAppear.call(this);
+
+				RangeStateControl.upDateAndCopy();
+			};
+	}
+
 })();
 
 
@@ -677,6 +681,7 @@ v1.324
  *=======================================================================*/
 
 var RangeStateControl = {
+
 
 	_rangeStateUnitArray: [],
 
@@ -722,7 +727,7 @@ var RangeStateControl = {
 
 	/*===================================================================
 	 *
-	 * 範囲ステート削除
+	 * 中心ステート確認
 	 *
 	 *===================================================================*/
 
@@ -770,11 +775,16 @@ var RangeStateControl = {
 	},
 
 
+	/*===================================================================
+	 *
+	 * 範囲ステート削除
+	 *
+	 *===================================================================*/
+
 	clearRangeStateAll: function() {
 
 		var i;
 		var j;
-
 		var arrayCnt;
 		var unit;
 		var indexArray;
@@ -828,8 +838,8 @@ var RangeStateControl = {
 
 
 				/*
-				 * 中心ユニット自身の元ステートが
-				 * すでに解除されている場合。
+				 * 中心ステートが解除されていたら
+				 * 拡散情報そのものを削除する。
 				 */
 				if (
 					!this._hasSourceState(
@@ -842,6 +852,7 @@ var RangeStateControl = {
 						unit,
 						stateRangeData.stateId
 					);
+
 
 					stateRangeDataArray.splice(
 						j,
@@ -856,9 +867,7 @@ var RangeStateControl = {
 
 
 				/*
-				 * stateRangeMove:false の場合、
-				 * 一度拡散したステートは範囲外へ出ても
-				 * 剥がさない。
+				 * falseなら移動による再計算をしない。
 				 */
 				if (
 					stateRangeData.stateRangeMove === false
@@ -900,6 +909,7 @@ var RangeStateControl = {
 		var x;
 		var y;
 		var targetUnit;
+		var state;
 
 
 		var count =
@@ -910,7 +920,7 @@ var RangeStateControl = {
 			stateRangeData.stateRangeFilter;
 
 
-		var state =
+		state =
 			this.getChildState(
 				stateRangeData
 			);
@@ -929,7 +939,6 @@ var RangeStateControl = {
 
 			index =
 				indexArray[i];
-
 
 			x =
 				CurrentMap.getX(index);
@@ -983,7 +992,6 @@ var RangeStateControl = {
 
 		var i;
 		var j;
-
 		var arrayCnt;
 		var unit;
 		var indexArray;
@@ -997,7 +1005,6 @@ var RangeStateControl = {
 
 		var oldCopying =
 			StateControl._rangeStateCopying;
-
 
 		StateControl._rangeStateCopying =
 			true;
@@ -1052,8 +1059,8 @@ var RangeStateControl = {
 
 
 				/*
-				 * 中心ユニット自身の元ステートが
-				 * 解除されていた場合は拡散しない。
+				 * 中心ステートが解除済みなら
+				 * この拡散機能を完全に破棄する。
 				 */
 				if (
 					!this._hasSourceState(
@@ -1066,6 +1073,7 @@ var RangeStateControl = {
 						unit,
 						stateRangeData.stateId
 					);
+
 
 					stateRangeDataArray.splice(
 						j,
@@ -1080,11 +1088,8 @@ var RangeStateControl = {
 
 
 				/*
-				 * stateRangeMove:false の場合、
-				 * ステートを付与された瞬間の1回だけ拡散する。
-				 *
-				 * すでに拡散済みなら、以後は新しいユニットへ
-				 * 拡散しない。
+				 * falseかつ一度拡散済みなら
+				 * 新しい位置には拡散しない。
 				 */
 				if (
 					stateRangeData.stateRangeMove === false &&
@@ -1136,6 +1141,9 @@ var RangeStateControl = {
 		var x;
 		var y;
 		var targetUnit;
+		var state;
+		var oldPropagation;
+		var result;
 
 
 		var count =
@@ -1146,7 +1154,7 @@ var RangeStateControl = {
 			stateRangeData.stateRangeFilter;
 
 
-		var state =
+		state =
 			this.getChildState(
 				stateRangeData
 			);
@@ -1208,25 +1216,46 @@ var RangeStateControl = {
 						}
 
 
-						this._registerRangeStateTarget(
-							targetUnit,
-							stateRangeData,
-							state.getId()
-						);
+						/*
+						 * 拡散されたステートが
+						 * 新しい中心になるのを防止。
+						 */
+						oldPropagation =
+							StateControl._rangeStatePropagation;
+
+						StateControl._rangeStatePropagation =
+							true;
 
 
-						StateControl.arrangeState(
-							targetUnit,
-							state,
-							IncreaseType.INCREASE
-						);
+						result =
+							StateControl.arrangeState(
+								targetUnit,
+								state,
+								IncreaseType.INCREASE
+							);
 
 
-						this._setStateTurn(
-							targetUnit,
-							state,
-							stateRangeData.stateTurn
-						);
+						StateControl._rangeStatePropagation =
+							oldPropagation;
+
+
+						if (
+							result !== null
+						) {
+
+							this._registerRangeStateTarget(
+								targetUnit,
+								stateRangeData,
+								state.getId()
+							);
+
+
+							this._setStateTurn(
+								targetUnit,
+								state,
+								stateRangeData.stateTurn
+							);
+						}
 					}
 				}
 			}
@@ -1236,7 +1265,7 @@ var RangeStateControl = {
 
 	/*===================================================================
 	 *
-	 * 中心ステート解除時の連動解除
+	 * 拡散されたステートの追跡
 	 *
 	 *===================================================================*/
 
@@ -1450,7 +1479,7 @@ var RangeStateControl = {
 
 	/*===================================================================
 	 *
-	 * 範囲データ作成
+	 * 範囲ステート情報作成
 	 *
 	 *===================================================================*/
 
@@ -1472,65 +1501,58 @@ var RangeStateControl = {
 		}
 
 
+		/*
+		 * このプラグインでは
+		 * state.custom.stateRange のみを使用。
+		 *
+		 * 杖・アイテムのcustom.stateRangeは見ない。
+		 */
 		if (
-			typeof state.custom.stateRange === 'number'
+			typeof state.custom.stateRange !== 'number'
 		) {
 
-			range =
-				state.custom.stateRange;
+			return false;
+		}
 
 
-			if (
-				range < 1
-			) {
-
-				return false;
-			}
+		range =
+			state.custom.stateRange;
 
 
-			filter =
-				this._getStateRangeFilter(
-					state
-				);
+		if (
+			range < 1
+		) {
+
+			return false;
+		}
 
 
-			unit.custom.stateRange =
-				range;
-
-			unit.custom.stateRangeFilter =
-				filter;
-
-
-			this.createRangeData(
-				unit,
+		filter =
+			this._getStateRangeFilter(
 				state
 			);
 
 
-			return true;
-		}
+		unit.custom.stateRange =
+			range;
+
+		unit.custom.stateRangeFilter =
+			filter;
 
 
-		if (
-			this.hasRangeFlag(unit)
-		) {
-
-			this.createRangeData(
-				unit,
-				state
-			);
-
-			return true;
-		}
+		this.createRangeData(
+			unit,
+			state
+		);
 
 
-		return false;
+		return true;
 	},
 
 
 	/*===================================================================
 	 *
-	 * stateRangeFilter解析
+	 * stateRangeFilter
 	 *
 	 *===================================================================*/
 
@@ -1565,7 +1587,9 @@ var RangeStateControl = {
 
 
 		result =
-			this._getFilterFromString(value);
+			this._getFilterFromString(
+				value
+			);
 
 
 		if (
@@ -1683,90 +1707,6 @@ var RangeStateControl = {
 
 	/*===================================================================
 	 *
-	 * 杖・道具の旧方式
-	 *
-	 *===================================================================*/
-
-	setRangeFlagToUnit: function(
-		targetUnit,
-		item,
-		unit
-	) {
-
-		if (
-			targetUnit == null ||
-			item == null ||
-			unit == null
-		) {
-
-			return;
-		}
-
-
-		if (
-			typeof item.custom.stateRange !== 'number'
-		) {
-
-			return;
-		}
-
-
-		targetUnit.custom.stateRange =
-			item.custom.stateRange;
-
-
-		targetUnit.custom.stateRangeFilter =
-			FilterControl.getBestFilter(
-				unit.getUnitType(),
-				item.getFilterFlag()
-			);
-
-
-		if (
-			typeof item.custom.stateRangeMove
-			=== 'boolean'
-		) {
-
-			targetUnit.custom.stateRangeMove =
-				item.custom.stateRangeMove;
-		}
-	},
-
-
-	hasRangeFlag: function(unit) {
-
-		if (
-			unit == null
-		) {
-
-			return false;
-		}
-
-
-		return (
-			typeof unit.custom.stateRange === 'number'
-		);
-	},
-
-
-	clearRangeFlag: function(unit) {
-
-		if (
-			unit == null
-		) {
-
-			return;
-		}
-
-
-		delete unit.custom.stateRange;
-		delete unit.custom.stateRangeFilter;
-		delete unit.custom.stateRangeMove;
-	},
-
-
-	/*===================================================================
-	 *
 	 * 範囲ステート情報
 	 *
 	 *===================================================================*/
@@ -1811,15 +1751,6 @@ var RangeStateControl = {
 			unit.custom.stateRangeFilter;
 
 
-		/*
-		 * 範囲の移動方式
-		 *
-		 * true  = 中心ユニットの移動に追従
-		 * false = 付与時の位置で一度だけ拡散し、
-		 *          その後は範囲外へ出ても維持
-		 *
-		 * 未指定なら従来通りtrue。
-		 */
 		obj.stateRangeMove =
 			true;
 
@@ -1832,20 +1763,8 @@ var RangeStateControl = {
 			obj.stateRangeMove =
 				state.custom.stateRangeMove;
 		}
-		else if (
-			typeof unit.custom.stateRangeMove
-			=== 'boolean'
-		) {
-
-			obj.stateRangeMove =
-				unit.custom.stateRangeMove;
-		}
 
 
-		/*
-		 * falseの場合は「一度だけ拡散」のための
-		 * 初期化フラグを保存。
-		 */
 		obj.stateRangeInitialized =
 			false;
 
