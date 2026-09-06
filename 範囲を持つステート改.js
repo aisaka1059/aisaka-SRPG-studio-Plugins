@@ -32,6 +32,8 @@ v1.324
 
 更新履歴：
 2026/09/02作成
+2026/09/07
+設定がfalseでも2度接近すると拡散されてしまう不具合を修正
 
 規約：
 ・利用はSRPG Studioを使ったゲームに限ります。
@@ -1717,6 +1719,9 @@ var RangeStateControl = {
 	) {
 
 		var obj;
+		var oldArray;
+		var oldData;
+		var oldInitialized = false;
 
 
 		if (
@@ -1725,6 +1730,59 @@ var RangeStateControl = {
 		) {
 
 			return;
+		}
+
+
+		/*
+		 * 同じ中心ユニット・同じステートが再付与/更新された場合でも、
+		 * stateRangeMove:false の「一度だけ拡散済み」という情報を
+		 * リセットしない。
+		 *
+		 * これをリセットしてしまうと、
+		 *
+		 *  1. 一度範囲内に入る
+		 *  2. 行動をキャンセルする
+		 *  3. 再び範囲内に入る
+		 *
+		 * という流れで、同じ中心ステートから再度拡散してしまう。
+		 */
+		oldArray =
+			this._getStateRangeDataArray(unit);
+
+
+		if (
+			oldArray != null
+		) {
+
+			var oldCount =
+				oldArray.length;
+
+			var oldId =
+				state.getId();
+
+			var i;
+
+
+			for (
+				i = 0;
+				i < oldCount;
+				i++
+			) {
+
+				oldData =
+					oldArray[i];
+
+				if (
+					oldData != null &&
+					oldData.stateId === oldId
+				) {
+
+					oldInitialized =
+						oldData.stateRangeInitialized === true;
+
+					break;
+				}
+			}
 		}
 
 
@@ -1765,8 +1823,13 @@ var RangeStateControl = {
 		}
 
 
+		/*
+		 * 既に一度拡散済みなら、その状態を維持する。
+		 * これにより false のステートは、中心ステートが
+		 * 解除されるまで再拡散しない。
+		 */
 		obj.stateRangeInitialized =
-			false;
+			oldInitialized;
 
 
 		if (
